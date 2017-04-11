@@ -34,7 +34,7 @@
 Our goal is to modify open source program KeePassXC\footnote{\url{https://keepassxc.org/}} to use Java Card. KeePassXC is a port of popular password manager KeePass\footnote{\url{http://keepass.info/}}. KeePass allows users to decrypt password database using password and/or key file. We will add a button to KeePassXC, which shows a prompt requesting PIN from the user. If the PIN is accepted by the card, then password for the database is loaded from the card and used by KeePassXC for unlocking the database.
 
 \section{Java Card side}
-APDUs? PIN specification? What does the card store? What messages does it recognize? What does it send back? Briefly!
+Purpose of the card is to store user's password and provide it back only after inserting valid PIN. PIN has 4 digits and user has 3 attempts. After 3 unsuccessful attempts the card locks itself. The card will support APDUs for setting PIN and the password, for PIN attempt, and for requesting the password.
 
 \section{Secure channel}
 First, let us discuss possible authentication options within the secure channel. Based on the authentication, we will pick the corresponding Global Platform secure channel.
