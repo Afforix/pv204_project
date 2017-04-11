@@ -22,13 +22,21 @@
 	citecolor=magenta,
 }
 
-\title{Design}
-\author{}
+\title{Security Technologies: Project Design}
+\author{Adam Janovský, Marie William Gabriel Konan, Matěj Plch}
 \date{}
 
 
 \begin{document}
 \maketitle
 
+\section{Client side}
+Our goal is to modify open source program KeePassXC\footnote{\url{https://keepassxc.org/}} to use Java Card. KeePassXC is a port of popular password manager KeePass\footnote{\url{http://keepass.info/}}. KeePass allows users to decrypt password database using password and/or key file. We will add a button to KeePassXC, which shows a prompt requesting PIN from the user. If the PIN is accepted by the card, then password for the database is loaded from the card and used by KeePassXC for unlocking the database.
+
+\section{Java Card side}
+APDUs? PIN specification? What does the card store? What messages does it recognize? What does it send back? Briefly!
+
+\section{Secure channel}
+TBD
 
 \end{document}
