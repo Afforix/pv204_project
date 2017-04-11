@@ -37,6 +37,33 @@ Our goal is to modify open source program KeePassXC\footnote{\url{https://keepas
 APDUs? PIN specification? What does the card store? What messages does it recognize? What does it send back? Briefly!
 
 \section{Secure channel}
-TBD
+First, let us discuss possible authentication options within the secure channel. Based on the authentication, we will pick the corresponding Global Platform secure channel.
+
+The authentication in secure channel must be mutual. Consider the case, when the smart card is somehow (physically or logically) replaced by the malicious card. Then this card would be able to receive user credentials (i.e. PIN) via established secure channel. Therefore, mutual authentication is needed. That implies usage of some pre-shared secret or public key cryptography. Let us proceed with discussion on the pre-shared secret vs. public-key cryptography approach for secure channel. 
+
+The PC-Application binary is not secure place to store static keys. If we use assymetric cryptography, again, we have to store the private key somewhere. 
+Therefore, some tradeoff between security and usability is neccessary. Let's revise the options how we could store the static symmetric key for the PC-Application.
+
+\begin{itemize}
+\item[Option 1]  - Store it as a plaintext and hide it somehow in the binary. Some further masquarade or encoding (like base64) could be used 
+\item[Option 2] - Store it on some server
+\item[Option 3] - Encrypt it with application's public key and store the corresponding private key
+\item[Option 4] - Hardcode some secondary key, hide it somewhere in the binary and use it to encrypt the preshared master key, store the encrypted text in the database
+\item[Option 5] - Keep it outside the application on the hard drive. 
+\end{itemize}
+
+We discard option 2 immediately without evaluating its security - this option is too complicated. Moreover we see that option 3 only propagates the problem and creates some sort of self-dependency. Therefore we are left with options 1, 4 and 5. We can see, that option 4 is somehow strenghtened option 1. Option 5 seems rather silly. If the application is on the same drive as the key, option 5 basicaly reduces to weakened option 1. If it is on different hard drive, the use-case gets ridiculous. Notice, that we could use some other javacard instead of hard drive, or hardware secure module. For both of these, the weird use-case remains and usability rapidly drops. 
+Based on this, we decide to go with the pre-shared secret symmetric key stored either by option 1 or option 4. We have which of those we will implement.
+
+Now we now, that we will need mutual authentication and pre-shared symmetric static key. Hence we can select reasonable standardized secure channel. For our purposes we will use the SCP'03 from GlobalPlatform, as it has suitable API for java card and C library for our application. The SCP'03 will be implemented according to the standard available from GlobalPlatform\footnote{\url{https://www.globalplatform.org/specificationscard.asp}}.
+
+
+
+
+
+
+ 
+
+
 
 \end{document}
