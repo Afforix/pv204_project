@@ -1,0 +1,94 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[english]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage{mathtools}
+\usepackage{fullpage}
+\usepackage{cmap}		% Make PDF file searchable and copyable (ASCII characters)
+\usepackage{lmodern}	% Make PDF file searchable and copyable (Accented characters)
+\usepackage[T1]{fontenc}	% Hyphenate accented words
+\usepackage[protrusion]{microtype}	% Better typeset results
+\usepackage{amsmath,amsfonts,amssymb} % Mathematics
+\usepackage{float}		% Force figure placement H
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage[colorinlistoftodos]{todonotes}
+\usepackage[unicode, breaklinks, colorlinks]{hyperref}
+
+\def\arraystretch{1.5}
+% https://github.com/slechta/DragonSRP
+% https://github.com/mobilesec/secure-channel-srp6a-applet
+% http://srp.stanford.edu/doc.html
+% https://ins.jku.at/sites/default/files/publications/14SRP_withEC_IJPCC_HP.pdf
+
+\hypersetup{
+	pdfstartview=,
+	linkcolor=red,
+	urlcolor=blue,
+	citecolor=magenta,
+}
+
+\title{PV204 project}
+\author{Adam Janovský, Marie William Gabriel Konan, Matěj Plch}
+\date{}
+
+
+\begin{document}
+\maketitle
+\section*{JavaCard applet}
+
+The JavaCard applet is designed as follows. The password is stored in encrypted array in EEPROM. The encryption key is generated randomly and stored inside Key object. IV is also generated randomly. No-one (except the card itself) has the access to the key. The password is encrypted by 128-bit AES in CBC mode. The reason for encryption is that on the lecture it was noted, that sensitive data should not be stored in arrays, but rather in special objects. Yet, there is no safe object for 128-byte long password. The unencrypted password is copied straight from/into incoming/outcoming APDU buffer. The length of the password is stored unencrypted, again, on EEPROM. The applet has only several practical methods, i.e. \texttt{verifyPin, setPin, setPassword, sendPassword}. The last three are allowed to run only when the user is authenticated. The methods are called based on the APDU commands, just as done in previous home assignments. We allow selection of applet only if the PIN is not blocked, moreover we reset authentication state on selection. No admin PIN is involved, therefore blocking the PIN (3 tries) results in blocking the applet indefinitely. Initally, the PIN is set to \texttt{0000}. The rest of the documentation is contained straight in the JavaCard applet.
+
+\section*{Secure channel design}
+
+We have decided to use the Secure remote password protocol in version 6, slightly modified for use on javaCard, as precisely described in~\cite{srpjava}. This protocol is based on~\cite{srp} which provides mutually authenticated secure channel with possible encryption, with use of short password - PIN in our case. After the authentication, the javaCard version of the protocol provides both integrity and confidentiality as well as encapsulation of whole APDUs (to provide integrity of the APDU header). Further on, we shortly describe how the protocol works in our enviroment. The card poses as server and the pcApp poses as client in the protocol. The initial phase of the protocol has to be done in the secure enviroment. First, group in which we compute is established, i.e. the modulus $n$ is chosen and the generator $g$ is computed. Further on, the pcApp picks a random short salt $s$ and asks user for a PIN $P$. Then the pcApp computes $x = H(s,P)$, where $H$ stands for arbitrary secure hash function. Further $v = g^x$ is computed and $(v,s)$ is stored securely on the javaCard. The mutual authentication and shared secret is then achieved with the following scheme
+
+\begin{alignat*}{3}
+& \textrm{pcApp} \quad &&                                                         && \quad \textrm{Card} \\
+& A = g^A && \quad \xrightarrow{A} && \quad B = kv + g^b \\
+& u = H(A,B) && \quad \xleftarrow{B,s} && \quad u = H(A,B) \\
+& x = H(s,P) && && \\
+& S = (B - kg^x)^{a + ux} && && \quad S = (Av^u)^b \\
+& K = H(S) && && \quad K = H(S) \\
+& M_1 = H(u,S) && \quad \xrightarrow{M_1} && \quad (\textrm{verify } M_1) \\
+& (\textrm{verify } M_2) && \quad \xrightarrow{M_2} && \quad M_2 = H(u, M_1, S).
+\end{alignat*}
+where all computations are performed modulo $n$ and with respect to the following notation
+\begin{align*}
+g \dots & \textrm{the group generator} \\
+s \dots & \textrm{Random pcApp's salt for the password} \\
+a, b \dots & \textrm{Ephemeral private keys, generated randomly and not publicly revealed} \\
+A, B \dots & \textrm{Corresponding public keys} \\
+k \dots & \textrm{Constant multiplier, computed from the has of the modulo and concatenated with } g \\
+x \dots & \textrm{private key derived from the password and salt} \\
+v \dots & \textrm{The password verifier calculated from } g^x \\
+u \dots & \textrm{Random scrambling parameter, publicly revealed} \\
+H() \dots & \textrm{One-way hash function} \\
+K \dots & \textrm{Computed session key}
+\end{align*}
+The actual authentication happens in the last two steps and the resulting session secret is $K$. Upon completion of the protocol, secure communication takes place. It has to be noted that if any error during the protocol happens, whole process has to be stopped and repeated. For the exact thread model, see~\cite{srpjava}.
+\section*{Secure channel implementation}
+Unfortunately, due to the time issues, we were not able to implement the protocol. We have at least found possible libraries to use/get inspired. First of all, the applet which implements the protocol is part of the article~\cite{srpjava} and is fully available on github~\cite{appletgit}. The corresponding C++ library (implementing the original SRP-6 protocol) is available from~\cite{library}.
+
+\begin{thebibliography}{9}
+\bibitem{srpjava} 
+HÖLZL, Michael, Endalkachew ASNAKE, Rene MAYRHOFER a ndMichael ROLAND. A password-authenticated secure channel for App to Java Card applet communication. \textit{International Journal of Pervasive Computing and Communications} [online]. 2015, \textbf{11}(4), 374-397 [cit. 2017-05-04]. DOI: 10.1108/IJPCC-09-2015-0032. ISSN 1742-7371. Available from: \url{http://www.emeraldinsight.com/doi/10.1108/IJPCC-09-2015-0032}
+
+\bibitem{srp}
+WU, Thomas D., et al. \textit{The Secure Remote Password Protocol}. In: NDSS. 1998. p. 97-111.
+
+\bibitem{appletgit}
+HÖLZL, Michael, Endalkachew ASNAKE, Rene MAYRHOFER and Michael ROLAND. \textit{Java Card applet for SRP-6a password-authenticated secure channel to secure elements/smartcards} [online]. Available from: \url{https://github.com/mobilesec/secure-channel-srp6a-applet}.
+
+\bibitem{library}
+SLECHTA, Pavel. \textit{C++ library implementing The Stanford Secure Remote Password Protocol - SRP (SRP6a)} [online]. Available from: \url{https://github.com/slechta/DragonSRP}.
+\end{thebibliography}
+
+
+
+
+
+ 
+
+
+
+\end{document}
