@@ -24,6 +24,7 @@
 \definecolor{pgrey}{rgb}{0.46,0.45,0.48}
 
 \lstset{language=Java,
+  tabsize=4,
   showspaces=false,
   showtabs=false,
   breaklines=true,
@@ -32,9 +33,7 @@
   commentstyle=\color{pgreen},
   keywordstyle=\color{pblue},
   stringstyle=\color{pred},
-  basicstyle=\ttfamily,
-  moredelim=[il][\textcolor{pgrey}]{$$},
-  moredelim=[is][\textcolor{pgrey}]{\%\%}{\%\%}
+  basicstyle=\ttfamily
 }
 
 \def\arraystretch{1.5}
@@ -47,16 +46,26 @@
 	citecolor=magenta,
 }
 
-\title{PV204 project}
+\title{PV204 Security Technologies: jpass-smartcard code review}
 \author{Adam Janovský, Marie William Gabriel Konan, Matěj Plch}
 \date{}
 
 
 \begin{document}
-\maketitle
-\section*{JavaCard applet and secure channel design}
 
-\subsection*{Symemtric key derivation}
+\maketitle
+
+\section*{Desktop application}
+As described by the authors in the documentation, the desktop application can be compiled to use simulated or real smart card. When using simulated card the application worked, we were able to create a database with passwords, store it encrypted on a disk, load it from disk and successfully decrypt it. We have also traced the program in debugger and confirmed that the program processes the database through the smart card. 
+
+We have also tried to use real smart card, but we have encountered multiple compilation errors. We have contacted the authors and they admitted that they have not tested their applet on a real card. Together we have successfully built the applet for a real card, but the applet have not worked. Reason for that is not known, the applet works in a simulator, but this is not the first time we see such behavior, so we have no illusions about reliability of smart cards. The other team didn't have time to provide us with working applet on a real card, so we have not done more investigation of this problem.
+
+\section*{Static code analysis}
+We have used FindBugs to analyze the project for issues in the code. The original project already contained 28 issues, but another 26 issues were introduced. The findings were most probably not critical, for example unused methods or dead stores. One issue was interesting, it complained about unused variable Applet.SecureChannel.keyMAC, which could indicate that there is something wrong with an integrity of messages. However, authors clearly stated in their documentation that implementation of the secure channel is incomplete and broken.
+
+\section*{Java Card applet and secure channel design}
+
+\subsection*{Symmetric key derivation}
 
 Though not implemented, the authors propose to truncate shared secret obtained by DH key exchange to 256 bits and use it as a symmetric key for AES. Practically, it would be probably safe way to go. Yet, 
 as the shared secret is basically member of group, the entropy within those 256 bits is less then 256 bits. In exact, some bits might be predictible due to algebraical structure of the number. How many bits are leaked depends heavily on choice of primes for the underlying group (safe primes leak less, results in like 247 bits of entropy), etc, etc... Moreover, there are standards that command to use proper key derivation function. On assumption that hash function is properly random, simple hash of the key would be sufficient.
@@ -68,17 +77,19 @@ as the shared secret is basically member of group, the entropy within those 256 
 	\item The PIN validated flag is not reseted on select nor deselect. The attacker could wait for the applet to be deselected (card not removed), then simply select it again by himself and be authenticated. Then he could establish shared secret and obtain decrypted database
 \end{itemize}
 
-Some (bad) examples of code follow. For instance, in method \texttt{processDecrypted} we see the following code
+Some (bad) examples of code follow. For instance, in method \texttt{processDecrypted} we see the following code:
 
 \begin{lstlisting}[language=java]
 if(ins == INS_VERIFYPIN) {
-                    if((short)m_pin.getTriesRemaining() > (short)0) {
-                       VerifyPIN(apdu); 
-                    } else {
-                        ISOException.throwIt(SW_BAD_PIN);
-                    }
+	if((short)m_pin.getTriesRemaining() > (short)0) {
+		VerifyPIN(apdu); 
+	} else {
+		ISOException.throwIt(SW_BAD_PIN);
+	}
+}
 \end{lstlisting}
-the first if part is rendundand, as the PIN validation process would return false anyway. Moreover, in the \texttt{verifyPIN} method we have the code
+
+The first condition is rendundand, as the PIN validation process would return false anyway. Moreover, in the \texttt{VerifyPIN} method we see the code
 
 \begin{lstlisting}[language=java]
 if (m_pin.check(apdubuf, ISO7816.OFFSET_CDATA, (byte) dataLen) == false) { 
@@ -89,7 +100,7 @@ if (m_pin.check(apdubuf, ISO7816.OFFSET_CDATA, (byte) dataLen) == false) {
       }
 \end{lstlisting}
 
-where the PIN is checked twice (if it passes, why to check it again?). Generally, both mistakes do not probably create any space for the attack, but the style of the code allows exotic constructions which can be misused, as mentioned later.
+where the PIN is checked twice. If it passes, why to check it again? Generally, both mistakes do not probably create any space for the attack, but the style of the code allows exotic constructions which can be misused, as mentioned later.
 
 
 \subsection*{Padding oracle}
@@ -97,29 +108,29 @@ where the PIN is checked twice (if it passes, why to check it again?). Generally
 \subsubsection*{Introduction}
 
 \begin{itemize}
-\item  Padding oracle already covered in PV079
-\item If we force the javaCard applet to tell us about correctness of padding during decryption of the database, we are able (in AES-CBC mode) to decrypt the database
-\item Remains impractical under our constraints
-\item The javaCard applet actually leaks info about correct/incorrect padding. The guessed plaintext bytes are sadly encrypted to unknown values, hence this cannot be directly misused. 
-\item Most of the findings in the code review are obivous - authors probably know that integrity must be included and so on and so on. This is different, shows how certain parts of the system can be misused. 
+\item  Padding oracle already covered in PV079.
+\item If we force the Java Card applet to tell us about correctness of padding during decryption of the database, we are able (in AES-CBC mode) to decrypt the database.
+\item Remains impractical under our constraints.
+\item The Java Card applet actually leaks info about correct/incorrect padding. The guessed plaintext bytes are sadly encrypted to unknown values, hence this cannot be directly misused. 
+\item Most of the findings in the code review are obvious - authors probably know that integrity must be included and so on and so on. This is different, shows how certain parts of the system can be misused. 
 \end{itemize}
 
 \subsubsection*{Constraints}
 \begin{itemize}
-\item No freshness. hence the ability of replay attacks
-\item Ability to inject arbitrary APDU commands into the communication
-\item Ability to stop traffic going to pcApp
-\item The attacker must be able to send encrypted messages (this is the only thing that keeps it impractical)
+\item No freshness, hence the ability of replay attacks.
+\item Ability to inject arbitrary APDU commands into the communication.
+\item Ability to stop traffic going to the desktop application.
+\item The attacker must be able to send encrypted messages (this is the only thing that keeps it impractical).
 \end{itemize}
 
 \subsubsection*{The attack}
 
 \begin{itemize}
-\item In the applet, there are three methods to decrypt the database. Only one method -- \texttt{CBC\_BULK\_FINISH}) -- concerns the padding
-\item The method \texttt{CBC\_BULK\_FINISH} is designed to decrypt only the last block of the data. Yet, can be used to decrypt any blocks of the data multiple times 
-\item The method \texttt{CBC\_BULK\_FINISH} expects only one block of the data, i.e. 16 bytes at most (but can be forced to accept more). It decrypts those bytes and then checks the padding. If the padding is correct, it returns index where padding starts, i.e. $[0,\dots,15]$. Moreover, the data to decrypt are fed to the cipher object from \texttt{m\_last\_block} variable, not from the APDU buffer
+\item In the applet, there are three methods to decrypt the database. Only one method -- \texttt{CBC\_BULK\_Finish} -- concerns the padding
+\item The method \texttt{CBC\_BULK\_Finish} is designed to decrypt only the last block of the data. Yet, can be used to decrypt any blocks of the data multiple times 
+\item The method \texttt{CBC\_BULK\_Finish} expects only one block of the data, i.e. 16 bytes at most (but can be forced to accept more). It decrypts those bytes and then checks the padding. If the padding is correct, it returns index where padding starts, i.e. $[0,\dots,15]$. Moreover, the data to decrypt are fed to the cipher object from \texttt{m\_last\_block} variable, not from the APDU buffer
 \item The variable \texttt{m\_last\_block} should only have length of 16 bytes, yet, it is the byte array of 260 bytes. And data from apduBuffer can be fed into this variable by using the method \texttt{CBC\_BULK\_PROCESS} in encryption mode
-\item If the padding is incorrect, the method \texttt{CBC\_BULK\_FINISH} returns the length of encrypted data. Since it expects the 16 bytes, this should not be distinguishable from the index where padding starts $[0,\dots,16]$
+\item If the padding is incorrect, the method \texttt{CBC\_BULK\_Finish} returns the length of encrypted data. Since it expects the 16 bytes, this should not be distinguishable from the index where padding starts $[0,\dots,16]$
 \item Yet, if we send more blocks there, for instance 2 blocks, 32 bytes, then if the padding is incorrect, it returns value 32 - points to incorrect padding
 \item Hence the padding oracle occurs
 \item The reponse from padding oracle is sent encrypted to the attacker. But, the length of the APDU data perfectly corresponds to the returned value - if it is 32, padding incorrect. If the lengths is $[0,\dots,16]$, the padding is correct
@@ -128,31 +139,25 @@ where the PIN is checked twice (if it passes, why to check it again?). Generally
 
 \subsubsection*{Simulation of the attack}
 \begin{enumerate}
-	\item The attacker gains the access to the encrypted database --- $e_k(db)$, which is stored on the PC
-	\item The attacker waits for the pcApp to get authenticated in order to be able to inject APDU commands that require authentication
-	\item Now, the method \texttt{CBC\_BULK\_FINISH} takes \texttt{m\_last\_block\_length} bytes, which is initially set to 0 and using \texttt{MODE\_DECRYPT} can be only set to value 16 (the length of the block). 
-	    Yet, if we use \texttt{MODE\_ENCRYPT} and send arbitrary long buffer, it will set the variable \texttt{m\_last\_block\_length} to any value the attacker wishes, i.e. to 32. After this, the method \texttt{CBC\_BULK\_FINISH} will accept buffers of length 32 bytes. 
-	\item The attacker must encrypt the already encrypted database with the secure channel key, i.e. $e_s(e_k(db))$ and start sending questions to the padding oracle
-	\item The question to padding oracle cannot be send directly in apdu buffer, but must be fed to \texttt{m\_last\_block} first (from where is fed to \texttt{CBC\_BULK\_FINISH}. This can be done by calling \texttt{CBC\_BULK\_PROCESS} with \texttt{MODE\_ENCRYPT} option
-	\item The attacker reads the length of padding oracle response and based on that he decrypts the database 
+	\item The attacker gains the access to the encrypted database --- $e_k(db)$, which is stored on the PC.
+	\item The attacker waits for the desktop application to get authenticated in order to be able to inject APDU commands that require authentication.
+	\item Now, the method \texttt{CBC\_BULK\_Finish} takes \texttt{m\_last\_block\_length} bytes, which is initially set to 0 and using \texttt{MODE\_DECRYPT} can be only set to value 16 (the length of the block). 
+	    Yet, if we use \texttt{MODE\_ENCRYPT} and send arbitrary long buffer, it will set the variable \texttt{m\_last\_block\_length} to any value the attacker wishes, i.e. to 32. After this, the method \texttt{CBC\_BULK\_Finish} will accept buffers of length 32 bytes. 
+	\item The attacker must encrypt the already encrypted database with the secure channel key, i.e. $e_s(e_k(db))$ and start sending questions to the padding oracle.
+	\item The question to padding oracle cannot be send directly in apdu buffer, but must be fed to \texttt{m\_last\_block} first (from where is fed to \texttt{CBC\_BULK\_Finish}. This can be done by calling \texttt{CBC\_BULK\_PROCESS} with \texttt{MODE\_ENCRYPT} option.
+	\item The attacker reads the length of padding oracle response and based on that he decrypts the database .
 \end{enumerate}
 
 \subsubsection*{Conclusions on padding oracle}
 
-The attack is obscure, impractical, but shows that many part of the system can be misused (calling encryption mode to feed variable, etc...) and that one method actually leaks the padding result. 
+The attack is obscure, impractical, but shows that many parts of the system can be misused (calling encryption mode to feed variable, etc...) and that one method actually leaks the padding result. 
 
 
 \subsection*{Minor problems with applet}
 
 \begin{itemize}
-	\item Instruction codes are sent unencrypted
+	\item Instruction codes are sent unencrypted.
 \end{itemize}
-
-
-
-
- 
-
 
 
 \end{document}
