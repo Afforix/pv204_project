@@ -68,13 +68,13 @@ We have used FindBugs to analyze the project for issues in the code. The origina
 \subsection*{Symmetric key derivation}
 
 Though not implemented, the authors propose to truncate shared secret obtained by DH key exchange to 256 bits and use it as a symmetric key for AES. Practically, it would be probably safe way to go. Yet, 
-as the shared secret is basically member of group, the entropy within those 256 bits is less then 256 bits. In exact, some bits might be predictible due to algebraical structure of the number. How many bits are leaked depends heavily on choice of primes for the underlying group (safe primes leak less, results in like 247 bits of entropy), etc, etc... Moreover, there are standards that command to use proper key derivation function. On assumption that hash function is properly random, simple hash of the key would be sufficient.
+as the shared secret is basically member of group, the entropy within those 256 bits is less then 256 bits. In exact, some bits might be predictable due to algebraical structure of the number. How many bits are leaked depends heavily on choice of primes for the underlying group (safe primes leak less, results in like 247 bits of entropy), etc, etc... Moreover, there are standards that command to use proper key derivation function. On assumption that hash function is properly random, simple hash of the key would be sufficient.
 
 \subsection*{PIN validation}
 
 \begin{itemize}
 	\item Selection of the applet is allowed with blocked PIN
-	\item The PIN validated flag is not reseted on select nor deselect. The attacker could wait for the applet to be deselected (card not removed), then simply select it again by himself and be authenticated. Then he could establish shared secret and obtain decrypted database
+	\item The PIN validated flag is not reset on select nor deselect. The attacker could wait for the applet to be deselected (card not removed), then simply select it again by himself and be authenticated. Then he could establish shared secret and obtain decrypted database
 \end{itemize}
 
 Some (bad) examples of code follow. For instance, in method \texttt{processDecrypted} we see the following code:
@@ -126,15 +126,15 @@ where the PIN is checked twice. If it passes, why to check it again? Generally, 
 \subsubsection*{The attack}
 
 \begin{itemize}
-\item In the applet, there are three methods to decrypt the database. Only one method -- \texttt{CBC\_BULK\_Finish} -- concerns the padding
-\item The method \texttt{CBC\_BULK\_Finish} is designed to decrypt only the last block of the data. Yet, can be used to decrypt any blocks of the data multiple times 
-\item The method \texttt{CBC\_BULK\_Finish} expects only one block of the data, i.e. 16 bytes at most (but can be forced to accept more). It decrypts those bytes and then checks the padding. If the padding is correct, it returns index where padding starts, i.e. $[0,\dots,15]$. Moreover, the data to decrypt are fed to the cipher object from \texttt{m\_last\_block} variable, not from the APDU buffer
-\item The variable \texttt{m\_last\_block} should only have length of 16 bytes, yet, it is the byte array of 260 bytes. And data from apduBuffer can be fed into this variable by using the method \texttt{CBC\_BULK\_PROCESS} in encryption mode
-\item If the padding is incorrect, the method \texttt{CBC\_BULK\_Finish} returns the length of encrypted data. Since it expects the 16 bytes, this should not be distinguishable from the index where padding starts $[0,\dots,16]$
-\item Yet, if we send more blocks there, for instance 2 blocks, 32 bytes, then if the padding is incorrect, it returns value 32 - points to incorrect padding
-\item Hence the padding oracle occurs
-\item The reponse from padding oracle is sent encrypted to the attacker. But, the length of the APDU data perfectly corresponds to the returned value - if it is 32, padding incorrect. If the lengths is $[0,\dots,16]$, the padding is correct
-\item So there is no need to decrypt the response, only check for its length
+\item In the applet, there are three methods to decrypt the database. Only one method -- \texttt{CBC\_BULK\_Finish} -- concerns the padding.
+\item The method \texttt{CBC\_BULK\_Finish} is designed to decrypt only the last block of the data. Yet, can be used to decrypt any blocks of the data multiple times.
+\item The method \texttt{CBC\_BULK\_Finish} expects only one block of the data, i.e. 16 bytes at most (but can be forced to accept more). It decrypts those bytes and then checks the padding. If the padding is correct, it returns index where padding starts, i.e. $[0,\dots,15]$. Moreover, the data to decrypt are fed to the cipher object from \texttt{m\_last\_block} variable, not from the APDU buffer.
+\item The variable \texttt{m\_last\_block} should only have length of 16 bytes, yet, it is the byte array of 260 bytes. And data from apduBuffer can be fed into this variable by using the method \texttt{CBC\_BULK\_PROCESS} in encryption mode.
+\item If the padding is incorrect, the method \texttt{CBC\_BULK\_Finish} returns the length of encrypted data. Since it expects the 16 bytes, this should not be distinguishable from the index where padding starts $[0,\dots,16]$.
+\item Yet, if we send more blocks there, for instance 2 blocks, 32 bytes, then if the padding is incorrect, it returns value 32 - points to incorrect padding.
+\item Hence the padding oracle occurs.
+\item The response from padding oracle is sent encrypted to the attacker. But, the length of the APDU data perfectly corresponds to the returned value - if it is 32, padding incorrect. If the lengths is $[0,\dots,16]$, the padding is correct.
+\item So there is no need to decrypt the response, only check for its length.
 \end{itemize}
 
 \subsubsection*{Simulation of the attack}
